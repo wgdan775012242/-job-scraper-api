@@ -1,4 +1,3 @@
-// server.js
 const express = require('express');
 const axios = require('axios');
 const cheerio = require('cheerio');
@@ -6,62 +5,64 @@ const cors = require('cors');
 
 const app = express();
 
-// تفعيل CORS للسماح لموقعك بطلب البيانات
+// تفعيل CORS للسماح لتطبيقك الأمامي (React) بالاتصال بهذا الـ API
 app.use(cors());
 
-// نقطة النهاية التي تقوم بجلب أحدث الوظائف (Scraping API Endpoint)
+// نقطة النهاية (Endpoint) التي سيطلبها تطبيق الواجهة
 app.get('/v1/latest', async (req, res) => {
-    try {
-        const jobs = [];
-        
-        // 1. استخراج البيانات من موقع مرجان (كمثال)
-        try {
-            const mourjanUrl = 'https://sa.mourjan.com/jobs/';
-            const mourjanResponse = await axios.get(mourjanUrl, {
-                headers: { 
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' 
-                }
-            });
-            const $ = cheerio.load(mourjanResponse.data);
-            
-            // قراءة أحدث 10 إعلانات توظيف
-            $('.listing-item').slice(0, 10).each((index, element) => {
-                const title = $(element).find('.title').text().trim();
-                const link = $(element).find('a.listing-link').attr('href');
-                const details = $(element).find('.desc').text().trim();
-                const location = $(element).find('.location').text().trim() || 'السعودية';
-                
-                if (title && link) {
-                    jobs.push({
-                        id: `mourjan-${Date.now()}-${index}`,
-                        type: 'external',
-                        name: 'موقع مرجان للوظائف',
-                        title: title,
-                        phone: "", // الوظائف المسحوبة غالباً تتطلب التقديم عبر الموقع
-                        specialty: 'فرص عمل متنوعة',
-                        country: location,
-                        details: details || "التفاصيل والشروط متوفرة في رابط الإعلان الأصلي.",
-                        timestamp: new Date().toLocaleDateString("ar-EG", { year: 'numeric', month: 'short', day: 'numeric' }),
-                        url: link.startsWith('http') ? link : `https://sa.mourjan.com${link}`
-                    });
-                }
-            });
-        } catch (error) {
-            console.error('خطأ في جلب بيانات مرجان:', error.message);
-        }
+  try {
+    // مثال: جلب صفحة الوظائف من موقع خارجي (تم وضع الرابط كمثال للتوضيح)
+    const targetUrl = 'https://mourjan.com/sa/riyadh/jobs/';
+    const { data } = await axios.get(targetUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+      }
+    });
 
-        // 2. يمكنك تكرار نفس العملية لمواقع أخرى مثل "وظائف العرب" هنا...
-        
-        // إرسال البيانات بصيغة JSON لكي يتلقاها تطبيق React
-        res.json(jobs);
+    const $ = cheerio.load(data);
+    const jobs = [];
 
-    } catch (error) {
-        res.status(500).json({ error: 'حدث خطأ غير متوقع أثناء المعالجة' });
-    }
+    // التمرير على العناصر التي تحتوي على الوظائف (يجب تعديل المحددات Selectors حسب الموقع الفعلي)
+    $('.list-item').each((index, element) => {
+      // نكتفي بجلب أحدث 15 وظيفة مثلاً
+      if (index >= 15) return false; 
+
+      const title = $(element).find('.title').text().trim();
+      const details = $(element).find('.desc').text().trim();
+      let url = $(element).find('a').attr('href');
+      
+      // إكمال الرابط إذا كان نسبياً
+      if (url && !url.startsWith('http')) {
+        url = `https://mourjan.com${url}`;
+      }
+
+      if (title) {
+        jobs.push({
+          id: `ext-${Date.now()}-${index}`,
+          type: 'external',
+          name: 'موقع مرجان للوظائف',
+          title: title,
+          phone: '', // لا يتم توفير الرقم عادة إلا داخل الصفحة
+          specialty: 'متفرقات', 
+          country: 'السعودية (الرياض)',
+          details: details || 'لا توجد تفاصيل إضافية. يرجى زيارة الرابط لمعرفة المزيد.',
+          timestamp: new Date().toLocaleDateString('ar-EG', { year: 'numeric', month: 'short', day: 'numeric' }),
+          url: url
+        });
+      }
+    });
+
+    // إرجاع البيانات بصيغة JSON
+    res.json(jobs);
+  } catch (error) {
+    console.error('حدث خطأ أثناء جلب الوظائف:', error.message);
+    res.status(500).json({ error: 'فشل في جلب الوظائف. يرجى المحاولة لاحقاً.' });
+  }
 });
 
-const PORT = process.env.PORT || 4000;
+// تشغيل الخادم
+const PORT = process.env.PORT || 8080;
 app.listen(PORT, () => {
-    console.log(`🚀 Scraping API Server is running on port ${PORT}`);
-    console.log(`Test URL: http://localhost:${PORT}/v1/latest`);
+  console.log(`🚀 Scraper API is running on http://localhost:${PORT}`);
+  console.log(`Endpoint available at: http://localhost:${PORT}/v1/latest`);
 });
